@@ -1,0 +1,69 @@
+# dependencies
+/node_modules
+/frontend/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+/lib
+/public
+/hooks
+
+# testing
+/coverage
+/frontend/coverage
+
+# next.js
+/.next/
+/out/
+/frontend/.next/
+/frontend/out/
+
+# production
+/build
+/frontend/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+/frontend/.env*.local
+/frontend/.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+/frontend/*.tsbuildinfo
+/frontend/next-env.d.ts
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# cache
+.cache/
+.eslintcache
+
+# logs
+logs/
+*.log
+
+# build outputs
+dist/
+/frontend/dist/
+
+# temporary files
+*.tmp
+*.temp
