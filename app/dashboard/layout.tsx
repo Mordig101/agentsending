@@ -68,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       current: pathname === "/dashboard",
     },
     {
-      name: "Email Services",
+      name: "Services",
       href: "/dashboard/services",
       icon: Package,
       current: pathname === "/dashboard/services" || pathname.startsWith("/dashboard/services/"),
@@ -84,12 +84,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: "/dashboard/calendar",
       icon: Calendar,
       current: pathname === "/dashboard/calendar",
-    },
-    {
-      name: "All-in-One Campaign",
-      href: "/dashboard/campaign",
-      icon: Zap,
-      current: pathname === "/dashboard/campaign",
     },
     {
       name: "API Documentation",

@@ -307,7 +307,6 @@ export default function VerificationTab({
                   </AccordionItem>
                 </Accordion>
 
-                <Separator />
 
                 <div>
                   <Label>Email Source</Label>
