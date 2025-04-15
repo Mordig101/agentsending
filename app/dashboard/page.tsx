@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,7 +30,8 @@ import type {
   StreamingLog,
   EmailTemplate,
 } from "./dashboard/types"
-import type { ChangeEvent, FormEvent } from "react"
+import { apiEndpoints } from "@/app/config/verifier/api"
+import { loadBatchNames, generateRandomBatchName } from "./dashboard/utils/verification"
 
 interface RecentActivity {
   id: number
@@ -138,83 +141,25 @@ export default function DashboardPage() {
   ])
 
   const [verificationStats, setVerificationStats] = useState<VerificationStats>({
-    totalVerified: 12480,
-    validEmails: 10864,
-    invalidEmails: 1245,
-    riskyEmails: 371,
-    verificationRate: 87.1,
-    disposableEmails: 245,
-    spamTraps: 18,
-    syntaxErrors: 112,
-    domainErrors: 328,
-    mailboxErrors: 805,
-    recentBatches: [
-      {
-        id: "1",
-        name: "Marketing List June 2023",
-        date: "2023-06-10",
-        total: 2570,
-        valid: 2450,
-        invalid: 120,
-        status: "Completed",
-      },
-      {
-        id: "2",
-        name: "Sales Prospects Q2",
-        date: "2023-06-05",
-        total: 1845,
-        valid: 1623,
-        invalid: 222,
-        status: "Completed",
-      },
-      {
-        id: "3",
-        name: "Conference Attendees",
-        date: "2023-06-01",
-        total: 950,
-        valid: 912,
-        invalid: 38,
-        status: "Completed",
-      },
-      {
-        id: "4",
-        name: "Newsletter Subscribers",
-        date: "2023-05-25",
-        total: 3200,
-        valid: 2845,
-        invalid: 355,
-        status: "Completed",
-      },
-      {
-        id: "5",
-        name: "Webinar Registrants",
-        date: "2023-05-18",
-        total: 1250,
-        valid: 1180,
-        invalid: 70,
-        status: "Completed",
-      },
-    ],
-    runningBatches: [
-      {
-        id: "6",
-        name: "New Product Launch List",
-        date: "2023-06-12",
-        total: 5000,
-        processed: 2150,
-        valid: 1980,
-        invalid: 170,
-        status: "Running",
-        progress: 43,
-      },
-    ],
+    totalVerified: 0,
+    validEmails: 0,
+    invalidEmails: 0,
+    riskyEmails: 0,
+    verificationRate: 0,
+    disposableEmails: 0,
+    spamTraps: 0,
+    syntaxErrors: 0,
+    domainErrors: 0,
+    mailboxErrors: 0,
+    recentBatches: [],
+    runningBatches: [],
     errorBreakdown: [
-      { type: "Syntax Errors", count: 112, percentage: 9 },
-      { type: "Domain Errors", count: 328, percentage: 26.3 },
-      { type: "Mailbox Errors", count: 805, percentage: 64.7 },
+      { type: "Syntax Errors", count: 0, percentage: 0 },
+      { type: "Domain Errors", count: 0, percentage: 0 },
+      { type: "Mailbox Errors", count: 0, percentage: 0 },
     ],
     industryComparison: {
-      yourRate: 87.1,
+      yourRate: 0,
       industryAvg: 78.5,
       topPerformers: 92.3,
     },
@@ -718,155 +663,65 @@ export default function DashboardPage() {
     }
   }, [router])
 
-  // Simulate loading data
+  // Fetch verification statistics on component mount
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Get user data from localStorage
-      const userData = JSON.parse(localStorage.getItem("AgentSending_user") || "{}")
+    const fetchStats = async () => {
+      try {
+        // Fetch verification statistics
+        const response = await fetch(apiEndpoints.statistics.getStatsByCategory)
+        const data = await response.json()
 
-      setStats({
-        totalEmails: 15750,
-        verifiedEmails: 12480,
-        foundEmails: 8320,
-        sentEmails: 5640,
-        openRate: 42,
-        replyRate: 8,
-        campaigns: 8,
-        activeProspects: 4250,
-        creditsRemaining: userData.credits || 7850,
-        nextBillingDate: userData.nextBillingDate || "July 15, 2023",
-        plan: userData.plan || "Professional",
-      })
-      setIsLoading(false)
-    }, 1000)
+        if (data && data.categories) {
+          const { valid, invalid, risky, total } = data.categories
 
-    return () => clearTimeout(timer)
+          // Update dashboard stats
+          setStats((prev) => ({
+            ...prev,
+            totalEmails: total || 0,
+            verifiedEmails: valid || 0,
+          }))
+        }
+      } catch (error) {
+        console.error("Error fetching statistics:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    // Initialize batch names if not already done
+    const batchNames = loadBatchNames()
+    if (Object.keys(batchNames).length === 0) {
+      // Fetch batch IDs and generate random names
+      fetch(apiEndpoints.results.getBatchIds)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.batch_ids) {
+            const newBatchNames = { ...batchNames }
+            data.batch_ids.forEach((batchId: string) => {
+              if (!newBatchNames[batchId]) {
+                newBatchNames[batchId] = generateRandomBatchName()
+              }
+            })
+            localStorage.setItem("verification_batch_names", JSON.stringify(newBatchNames))
+          }
+        })
+        .catch((err) => console.error("Error fetching batch IDs:", err))
+    }
+
+    fetchStats()
+
+    // Get user data from localStorage
+    const userData = JSON.parse(localStorage.getItem("AgentSending_user") || "{}")
+
+    setStats((prev) => ({
+      ...prev,
+      creditsRemaining: userData.credits || 7850,
+      nextBillingDate: userData.nextBillingDate || "July 15, 2023",
+      plan: userData.plan || "Professional",
+    }))
   }, [])
 
-  // Simulate streaming data for running services
-  useEffect(() => {
-    if (streamingActive && streamingService) {
-      const interval = setInterval(() => {
-        // Simulate progress updates
-        setStreamingProgress((prev) => {
-          const newProgress = Math.min(prev + Math.random() * 2, 100)
-          return newProgress
-        })
-
-        // Simulate log updates
-        const logMessages = [
-          "Processing email batch...",
-          "Checking syntax for email addresses...",
-          "Verifying domain records...",
-          "Testing mailbox existence...",
-          "Checking for disposable email patterns...",
-          "Analyzing catch-all configuration...",
-          "Validating MX records...",
-          "Checking SPF records...",
-          "Analyzing DMARC policy...",
-          "Testing SMTP connection...",
-          "Searching for email pattern...",
-          "Analyzing company website...",
-          "Checking social profiles...",
-          "Extracting contact information...",
-          "Preparing email for delivery...",
-          "Personalizing email content...",
-          "Scheduling follow-up sequence...",
-          "Tracking email delivery...",
-        ]
-
-        const randomLog = logMessages[Math.floor(Math.random() * logMessages.length)]
-        const newLog: StreamingLog = {
-          id: Date.now(),
-          timestamp: new Date().toLocaleTimeString(),
-          message: randomLog,
-          type: Math.random() > 0.9 ? "warning" : "info",
-        }
-
-        setStreamingLogs((prev) => [...prev.slice(-19), newLog])
-
-        // Update stats
-        setStreamingStats((prev) => {
-          const newProcessed = Math.min(prev.processed + Math.floor(Math.random() * 5), prev.total)
-          const newSuccess = Math.min(prev.success + Math.floor(Math.random() * 4), newProcessed)
-          const newFailed = newProcessed - newSuccess
-
-          // Calculate time elapsed
-          const now = new Date()
-          const startTime = new Date(now.getTime() - 1000 * 60 * Math.floor(Math.random() * 30))
-          const elapsedSeconds = Math.floor((now.getTime() - startTime.getTime()) / 1000)
-          const hours = Math.floor(elapsedSeconds / 3600)
-          const minutes = Math.floor((elapsedSeconds % 3600) / 60)
-          const seconds = elapsedSeconds % 60
-          const timeElapsed = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
-
-          // Calculate estimated time remaining
-          const percentComplete = newProcessed / prev.total
-          if (percentComplete > 0) {
-            const totalEstimatedSeconds = elapsedSeconds / percentComplete
-            const remainingSeconds = Math.max(0, totalEstimatedSeconds - elapsedSeconds)
-            const remainingHours = Math.floor(remainingSeconds / 3600)
-            const remainingMinutes = Math.floor((remainingSeconds % 3600) / 60)
-            const remainingSecondsDisplay = Math.floor(remainingSeconds % 60)
-            const estimatedTimeRemaining = `${remainingHours.toString().padStart(2, "0")}:${remainingMinutes.toString().padStart(2, "0")}:${remainingSecondsDisplay.toString().padStart(2, "0")}`
-
-            return {
-              ...prev,
-              processed: newProcessed,
-              success: newSuccess,
-              failed: newFailed,
-              timeElapsed,
-              estimatedTimeRemaining,
-            }
-          }
-
-          return {
-            ...prev,
-            processed: newProcessed,
-            success: newSuccess,
-            failed: newFailed,
-            timeElapsed,
-          }
-        })
-
-        // If progress reaches 100%, stop streaming
-        if (streamingProgress >= 100) {
-          setStreamingActive(false)
-          clearInterval(interval)
-        }
-      }, 1000)
-
-      return () => clearInterval(interval)
-    }
-  }, [streamingActive, streamingService, streamingProgress])
-
-  const startStreaming = (service: string, total = 1000) => {
-    setStreamingService(service)
-    setStreamingActive(true)
-    setStreamingProgress(0)
-    setStreamingLogs([
-      {
-        id: Date.now(),
-        timestamp: new Date().toLocaleTimeString(),
-        message: `Starting ${service} process...`,
-        type: "info",
-      },
-    ])
-    setStreamingStats({
-      processed: 0,
-      total: total,
-      success: 0,
-      failed: 0,
-      timeElapsed: "00:00:00",
-      estimatedTimeRemaining: "00:00:00",
-    })
-
-    // Scroll to streaming section
-    if (streamingRef.current) {
-      streamingRef.current.scrollIntoView({ behavior: "smooth" })
-    }
-  }
-
+  // Stop streaming
   const stopStreaming = () => {
     setStreamingActive(false)
     setStreamingLogs((prev) => [
@@ -937,7 +792,7 @@ export default function DashboardPage() {
     })
   }
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>, service: string) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, service: string) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -956,7 +811,7 @@ export default function DashboardPage() {
     }
   }
 
-  const handleAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
 
@@ -981,25 +836,19 @@ export default function DashboardPage() {
     })
   }
 
-  const handleVerificationSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    // Simulate starting a verification process
-    startStreaming("verification", 5000)
-  }
-
-  const handleFinderSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleFinderSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // Simulate starting a finder process
     startStreaming("finder", 2000)
   }
 
-  const handleSenderSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSenderSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // Simulate starting a sender process
     startStreaming("sender", 1500)
   }
 
-  const handleAllInOneSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleAllInOneSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // Simulate starting an all-in-one process
     startStreaming("all-in-one", 3000)
@@ -1027,6 +876,29 @@ export default function DashboardPage() {
         emailBody: template.body,
       })
     }
+  }
+
+  // Start streaming for a service
+  const startStreaming = (service: string, total = 1000) => {
+    setStreamingService(service)
+    setStreamingActive(true)
+    setStreamingProgress(0)
+    setStreamingLogs([
+      {
+        id: Date.now(),
+        timestamp: new Date().toLocaleTimeString(),
+        message: `Starting ${service} process...`,
+        type: "info",
+      },
+    ])
+    setStreamingStats({
+      processed: 0,
+      total: total,
+      success: 0,
+      failed: 0,
+      timeElapsed: "00:00:00",
+      estimatedTimeRemaining: "00:00:00",
+    })
   }
 
   return (
@@ -1180,22 +1052,24 @@ export default function DashboardPage() {
         <TabsContent value="verification">
           <VerificationTab
             verificationStats={verificationStats}
+            setVerificationStats={setVerificationStats}
             verificationForm={verificationForm}
             setVerificationForm={setVerificationForm}
             handleFileChange={handleFileChange}
-            handleVerificationSubmit={handleVerificationSubmit}
             streamingService={streamingService}
             streamingActive={streamingActive}
             streamingProgress={streamingProgress}
             streamingStats={streamingStats}
             streamingLogs={streamingLogs}
-            startStreaming={startStreaming}
+            setStreamingService={setStreamingService}
+            setStreamingActive={setStreamingActive}
+            setStreamingProgress={setStreamingProgress}
+            setStreamingStats={setStreamingStats}
+            setStreamingLogs={setStreamingLogs}
             stopStreaming={stopStreaming}
             setActiveSetupTab={setActiveSetupTab}
-            streamingRef={streamingRef}
             getStatusBadge={getStatusBadge}
             formatDate={formatDate}
-            setStreamingActive={setStreamingActive}
           />
         </TabsContent>
 
