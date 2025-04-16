@@ -78,6 +78,34 @@ export interface BatchStatusResponse {
   timestamp: string
 }
 
+export interface BatchNamesResponse {
+  batches: Record<string, string>
+}
+
+export interface EmailResult {
+  email: string
+  category: "valid" | "invalid" | "risky" | "custom"
+  provider: string
+  timestamp?: string
+}
+
+export interface BatchDetailsResponse {
+  job_id: string
+  status: string
+  start_time: string
+  end_time?: string
+  total_emails: number
+  verified_emails: number
+  results: {
+    valid: number
+    invalid: number
+    risky: number
+    custom: number
+  }
+  email_results: Record<string, EmailResult>
+  emails?: EmailResult[] // This will be populated from email_results for UI rendering
+}
+
 // Finder Types
 export interface FinderStats {
   totalSearches: number

@@ -36,19 +36,9 @@ import type {
   StreamingStats,
   StreamingLog,
   CategoryStats,
-  BatchListResponse,
   VerificationBatch,
 } from "./types"
-import {
-  loadBatchNames,
-  saveBatchNames,
-  addBatchName,
-  getBatchName,
-  parseEmails,
-  calculateVerificationRate,
-  formatVerificationDate,
-  generateRandomBatchName,
-} from "./utils/verification"
+import { getBatchName, parseEmails, calculateVerificationRate, formatVerificationDate } from "./utils/verification"
 
 interface VerificationTabProps {
   verificationStats: VerificationStats
@@ -105,7 +95,7 @@ export default function VerificationTab({
     fetchBatches()
   }, [])
 
-  // Fetch verification statistics
+  // Update fetchVerificationStats to use GET:/api/statistics/category
   const fetchVerificationStats = async () => {
     try {
       const response = await fetch(apiEndpoints.statistics.getStatsByCategory)
@@ -129,67 +119,54 @@ export default function VerificationTab({
     }
   }
 
-  // Fetch all batches
+  // Update fetchBatches to use GET:/api/results and GET:/api/batches
   const fetchBatches = async () => {
     try {
-      const response = await fetch(apiEndpoints.results.getBatchIds)
-      const data: BatchListResponse = await response.json()
+      // Get all batch results
+      const resultsResponse = await fetch("/api/results")
+      const resultsData = await resultsResponse.json()
 
-      if (data && data.batch_ids) {
-        const batchNames = loadBatchNames()
+      // Get batch names
+      const batchNamesResponse = await fetch("/api/batches")
+      const batchNamesData = await batchNamesResponse.json()
 
-        // Generate random names for batches that don't have names
-        data.batch_ids.forEach((batchId) => {
-          if (!batchNames[batchId]) {
-            batchNames[batchId] = generateRandomBatchName()
-          }
-        })
-
-        saveBatchNames(batchNames)
-
-        // Fetch details for each batch
-        const batchPromises = data.batch_ids.map((batchId) =>
-          fetch(apiEndpoints.verification.checkStatus(batchId))
-            .then((res) => res.json())
-            .catch((err) => {
-              console.error(`Error fetching batch ${batchId}:`, err)
-              return null
-            }),
-        )
-
-        const batchResults = await Promise.all(batchPromises)
-        const validBatchResults = batchResults.filter((batch) => batch !== null)
-
-        // Process batch results
+      if (resultsData) {
         const runningBatches: VerificationBatch[] = []
         const completedBatches: VerificationBatch[] = []
 
-        validBatchResults.forEach((batch, index) => {
-          if (!batch) return
+        // Process each batch
+        for (const [batchId, batchData] of Object.entries(resultsData)) {
+          if (!batchData) continue
 
-          const batchId = data.batch_ids[index]
-          const batchName = getBatchName(batchId)
-          const isRunning = batch.status !== "completed"
+          const data = batchData as any
+          const batchName = batchNamesData?.batches?.[batchId] || getBatchName(batchId)
+          const isRunning = data.status === "started"
 
-          const batchData: VerificationBatch = {
+          // Calculate progress
+          const total = data.total_emails || 0
+          const processed = data.verified_emails || 0
+          const progress = total > 0 ? Math.round((processed / total) * 100) : 0
+
+          // Create batch data object
+          const batchInfo: VerificationBatch = {
             id: batchId,
             name: batchName,
-            date: formatVerificationDate(batch.timestamp),
-            total: batch.total_emails || 0,
-            processed: batch.verified_emails || 0,
-            valid: batch.results?.valid || 0,
-            invalid: batch.results?.invalid || 0,
-            risky: batch.results?.risky || 0,
-            status: batch.status,
-            progress: isRunning ? Math.round((batch.verified_emails / batch.total_emails) * 100) : 100,
+            date: formatVerificationDate(data.start_time || ""),
+            total: total,
+            processed: processed,
+            valid: data.results?.valid || 0,
+            invalid: data.results?.invalid || 0,
+            risky: data.results?.risky || 0,
+            status: data.status || "unknown",
+            progress: progress,
           }
 
           if (isRunning) {
-            runningBatches.push(batchData)
+            runningBatches.push(batchInfo)
           } else {
-            completedBatches.push(batchData)
+            completedBatches.push(batchInfo)
           }
-        })
+        }
 
         // Sort batches by date (newest first)
         runningBatches.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -238,7 +215,7 @@ export default function VerificationTab({
     }
   }
 
-  // Start batch verification and handle streaming response
+  // Update startBatchVerification to use POST:/api/verify/batch and PUT:/api/batches/{job_id}/name
   const startBatchVerification = async (emails: string[]) => {
     try {
       // Initialize streaming state
@@ -274,7 +251,7 @@ export default function VerificationTab({
       const startTime = new Date()
 
       // Make the API request with streaming response
-      const response = await fetch(apiEndpoints.verification.verifyBatch, {
+      const response = await fetch("/api/verify/batch", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -306,7 +283,6 @@ export default function VerificationTab({
         const lines = chunk.split("\n").filter((line) => line.trim())
 
         for (const line of lines) {
-          try {
             const data = JSON.parse(line)
 
             // Handle batch start/end messages
@@ -314,11 +290,16 @@ export default function VerificationTab({
               if (data.status === "started") {
                 batchId = data.job_id
 
-                // Save batch name
+                // Save batch name using the API
                 if (verificationForm.name) {
-                  addBatchName(batchId, verificationForm.name)
-                } else {
-                  addBatchName(batchId, generateRandomBatchName())
+                  // Use PUT:/api/batches/{job_id}/name to associate name with batch id
+                  fetch(`/api/batches/${batchId}/name`, {
+                    method: "PUT",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ name: verificationForm.name }),
+                  }).catch(err => console.error("Error setting batch name:", err))
                 }
 
                 setStreamingLogs((prev) => [
@@ -395,17 +376,14 @@ export default function VerificationTab({
                   {
                     id: Date.now(),
                     timestamp: new Date().toLocaleTimeString(),
-                    message: `Verified ${data.email}: ${data.category}`,
+                    message: `Verified ${data.email}: ${data.category} (${data.provider})`,
                     type: data.category === "valid" ? "info" : "warning",
                   },
                 ])
               }
             }
-          } catch (error) {
-            console.error("Error parsing stream chunk:", error, line)
           }
         }
-      }
 
       setIsLoading(false)
     } catch (error) {
@@ -525,29 +503,112 @@ export default function VerificationTab({
     }
   }
 
-  // View batch details
+  // Update viewBatchDetails to use GET:/api/verify/status/{job_id}
   const viewBatchDetails = async (batchId: string) => {
     setSelectedBatchId(batchId)
     setActiveTab("view")
 
     try {
-      const response = await fetch(apiEndpoints.results.getBatchResults(batchId))
+      const response = await fetch(`/api/verify/status/${batchId}`)
       const data = await response.json()
-      setBatchDetails(data)
+
+      // Process the data to match the expected format
+      if (data) {
+        // Convert email_results object to an array for easier rendering
+        const emailsArray = Object.values(data.email_results || {}).map((email: any) => ({
+          ...email,
+          timestamp: data.end_time || data.start_time || new Date().toISOString(),
+        }))
+
+        const processedData = {
+          ...data,
+          emails: emailsArray,
+          total_emails: data.total_emails || 0,
+          verified_emails: data.verified_emails || 0,
+        }
+
+        setBatchDetails(processedData)
+      }
     } catch (error) {
       console.error("Error fetching batch details:", error)
       setBatchDetails(null)
     }
   }
 
-  // Export batch results
+  // Add exportBatchResults function to export data as CSV
   const exportBatchResults = async (batchId: string, category = "all") => {
     try {
-      window.open(apiEndpoints.results.exportBatchResults(batchId, category), "_blank")
+      // Fetch the batch details if not already loaded
+      if (!batchDetails || selectedBatchId !== batchId) {
+        const response = await fetch(`/api/verify/status/${batchId}`)
+        const data = await response.json()
+
+        if (!data || !data.email_results) {
+          throw new Error("No data available for export")
+        }
+
+        // Convert to array and filter by category if needed
+        let emailsToExport = Object.values(data.email_results) as any[]
+
+        if (category !== "all") {
+          emailsToExport = emailsToExport.filter((email) => email.category === category)
+        }
+
+        // Create CSV content
+        const headers = ["Email", "Category", "Provider"]
+        const csvContent = [
+          headers.join(","),
+          ...emailsToExport.map((email) => `"${email.email}","${email.category}","${email.provider || "Unknown"}"`),
+        ].join("\n")
+
+        // Create and download the file
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.setAttribute("href", url)
+        link.setAttribute("download", `${getBatchName(batchId)}_${category}_emails.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      } else {
+        // Use already loaded batch details
+        let emailsToExport = [...(batchDetails.emails || [])]
+
+        if (category !== "all") {
+          emailsToExport = emailsToExport.filter((email) => email.category === category)
+        }
+
+        // Create CSV content
+        const headers = ["Email", "Category", "Provider"]
+        const csvContent = [
+          headers.join(","),
+          ...emailsToExport.map((email) => `"${email.email}","${email.category}","${email.provider || "Unknown"}"`),
+        ].join("\n")
+
+        // Create and download the file
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.setAttribute("href", url)
+        link.setAttribute("download", `${getBatchName(batchId)}_${category}_emails.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
     } catch (error) {
       console.error("Error exporting batch results:", error)
+      alert("Failed to export results. Please try again.")
     }
   }
+
+  // Export batch results
+  // const exportBatchResults = async (batchId: string, category = "all") => {
+  //   try {
+  //     window.open(apiEndpoints.results.exportBatchResults(batchId, category), "_blank")
+  //   } catch (error) {
+  //     console.error("Error exporting batch results:", error)
+  //   }
+  // }
 
   // Send to Finder
   const sendToFinder = (batchId: string) => {

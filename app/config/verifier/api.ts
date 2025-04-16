@@ -25,6 +25,10 @@ export const apiEndpoints = {
 
   // Results endpoints
   results: {
+    // Get all results
+    // GET /api/results
+    getResults: `${baseUrl}/api/results`,
+
     // Get all batch IDs
     // GET /api/results/batches
     getBatchIds: `${baseUrl}/api/results/batches`,
@@ -43,5 +47,16 @@ export const apiEndpoints = {
     // Get statistics by category
     // GET /api/statistics/category
     getStatsByCategory: `${baseUrl}/api/statistics/category`,
+  },
+
+  // Batch management endpoints
+  batches: {
+    // Get all batch names
+    // GET /api/batches
+    getAllBatches: `${baseUrl}/api/batches`,
+
+    // Update batch name
+    // PUT /api/batches/:batchId/name
+    updateBatchName: (batchId: string) => `${baseUrl}/api/batches/${batchId}/name`,
   },
 }
